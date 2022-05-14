@@ -71,8 +71,10 @@ const evaluate = async (data, client) => {
     const walletData = await getWalletBalance(client);
     const [equity, balance] = [walletData.equity, walletData.balance];
 
-    const CURRENT_LEVERAGE = 10;
-    const qty = (((equity*0.1)*CURRENT_LEVERAGE)/price).toFixed(3);
+    const CURRENT_LEVERAGE = process.env.CURRENT_LEVERAGE;
+    const DEGEN_FACTOR = process.env.DEGEN_FACTOR;
+
+    const qty = (((equity*DEGEN_FACTOR)*CURRENT_LEVERAGE)/price).toFixed(3);
 
     await placeOrder(client, ticker, price, side, qty);
 }
@@ -192,16 +194,36 @@ const getOrderBook = async (client, ticker) => {
 
 const placeOrder = async (client, ticker, price, side, qty) => {
 
+    let closePrice;
+    let inverse;
+
+    price = parseFloat(price)
+
+    if (side == "Buy") {
+        closePrice = (price + (price*0.035));
+    } else if (side == "Sell") {
+        closePrice = (price - (price*0.035));
+    }
+
+    if (side == "Buy") {
+        inverse = (price - (price*0.020));
+    } else if (side == "Sell") {
+        inverse = (price + (price*0.020));
+    }
+
     const result = await client.placeActiveOrder({
         side: side,
         symbol: ticker+"USDT",
-        order_type: "Limit",
+        order_type: "Market",
         qty: qty,
-        price: price,
+        take_profit: closePrice.toFixed(3),
+        stop_loss: inverse.toFixed(3),
         time_in_force: "GoodTillCancel",
         close_on_trigger: false,
         reduce_only: false,
     });
+
+    console.log(result)
 
     return result
 
