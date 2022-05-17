@@ -74,7 +74,20 @@ const evaluate = async (data, client) => {
     const CURRENT_LEVERAGE = process.env.CURRENT_LEVERAGE;
     const DEGEN_FACTOR = process.env.DEGEN_FACTOR;
 
-    const qty = (((equity*DEGEN_FACTOR)*CURRENT_LEVERAGE)/price).toFixed(3);
+    let qty = (((equity*DEGEN_FACTOR)*CURRENT_LEVERAGE)/price).toFixed(3);
+
+    let orderCost = qty*price;
+
+    console.log(orderCost/CURRENT_LEVERAGE)
+
+    if (orderCost > balance) {
+        console.log("Insufficient Funds");
+        qty = (((balance*DEGEN_FACTOR)*CURRENT_LEVERAGE)/price).toFixed(3);
+
+        let orderCost = qty*price;
+
+        console.log(orderCost/CURRENT_LEVERAGE)
+    }
 
     await placeOrder(client, ticker, price, side, qty);
 }
@@ -196,34 +209,53 @@ const placeOrder = async (client, ticker, price, side, qty) => {
 
     let closePrice;
     let inverse;
+    let result;
 
     price = parseFloat(price)
 
     if (side == "Buy") {
-        closePrice = (price + (price*0.035));
+        closePrice = (price + (price*0.08));
     } else if (side == "Sell") {
-        closePrice = (price - (price*0.035));
+        closePrice = (price - (price*0.08));
     }
+
+    const trailing = (price*0.0125);
 
     if (side == "Buy") {
-        inverse = (price - (price*0.020));
+        inverse = (price - (price*0.015));
     } else if (side == "Sell") {
-        inverse = (price + (price*0.020));
+        inverse = (price + (price*0.015));
     }
 
-    const result = await client.placeActiveOrder({
-        side: side,
-        symbol: ticker+"USDT",
-        order_type: "Market",
-        qty: qty,
-        take_profit: closePrice.toFixed(3),
-        stop_loss: inverse.toFixed(3),
-        time_in_force: "GoodTillCancel",
-        close_on_trigger: false,
-        reduce_only: false,
-    });
+    try {
+        result = await client.placeActiveOrder({
+            side: side,
+            symbol: ticker+"USDT",
+            order_type: "Market",
+            qty: qty,
+            take_profit: closePrice.toFixed(3),
+            stop_loss: inverse.toFixed(3),
+            time_in_force: "GoodTillCancel",
+            close_on_trigger: false,
+            reduce_only: false,
+        });
 
-    console.log(result)
+        if (result.ret_msg.includes("CannotAffordOrderCost")){
+            throw new Error("CannotAffordOrderCost");
+        }
+    } catch (e) {
+        console.log(e)
+    }
+    
+    console.log(trailing.toFixed(3))
+
+    const orderStop = await client.setTradingStop({
+        symbol: ticker+"USDT",
+        side: side,
+        trailing_stop: trailing.toFixed(3)
+    })
+
+    console.log(orderStop)
 
     return result
 
